@@ -1,0 +1,122 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: reto1db
+    volumes:
+      - ./db/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+  gateway:
+    image: nginx:stable
+    container_name: api_gateway
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+      - startup-create
+      - startup-read
+      - startup-update
+      - startup-delete
+      - technology-create
+      - technology-read
+      - technology-update
+      - technology-delete
+  # STARTUPS
+
+
+  startup-create:
+    build:
+      context: ./services/startups/create
+    container_name: startup-create
+    ports:
+      - "3001:3000"
+    depends_on:
+      - postgres
+
+  startup-read:
+    build:
+      context: ./services/startups/read
+    container_name: startup-read
+    ports:
+      - "3002:3000"
+    depends_on:
+      - postgres
+
+  startup-update:
+    build:
+      context: ./services/startups/update
+    container_name: startup-update
+    ports:
+      - "3003:3000"
+    depends_on:
+      - postgres
+
+  startup-delete:
+    build:
+      context: ./services/startups/delete
+    container_name: startup-delete
+    ports:
+      - "3004:3000"
+    depends_on:
+      - postgres
+  # TECHNOLOGIES
+  technology-create:
+    build:
+      context: ./services/technologies/create
+    container_name: technology-create
+    ports:
+      - "3011:3000"
+    depends_on:
+      - postgres
+
+  technology-read:
+    build:
+      context: ./services/technologies/read
+    container_name: technology-read
+    ports:
+      - "3012:3000"
+    depends_on:
+      - postgres
+
+  technology-update:
+    build:
+      context: ./services/technologies/update
+    container_name: technology-update
+    ports:
+      - "3013:3000"
+    depends_on:
+      - postgres
+
+  technology-delete:
+    build:
+      context: ./services/technologies/delete
+    container_name: technology-delete
+    ports:
+      - "3014:3000"
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./frontend
+    # frontend:
+    #   build:
+    #     context: ./frontend
+    #   container_name: frontend
+    #   ports:
+    #     - "5173:5173"
+    #   volumes:
+    #     - ./frontend:/app
+    #   depends_on:
+    #     - gateway
+
+networks:
+  default:
+    name: reto1-network
