@@ -1,27 +1,89 @@
+// Utilidad para formatear fecha a 'dd/MMMM/yyyy' en español
+function formatDateES(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date)) return isoString;
+  const meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  const dia = String(date.getDate()).padStart(2, '0');
+  const mes = meses[date.getMonth()];
+  const anio = date.getFullYear();
+  return `${dia}/${mes}/${anio}`;
+}
 
 
 import React, { useState } from 'react';
+import './App.css';
 
 const API_URL = 'http://localhost:8080/v1/api';
 
 function App() {
   const [view, setView] = useState('startups');
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
-      <h1>Panel CRUD Startups & Technologies</h1>
-      <nav style={{ marginBottom: 24 }}>
-        <button onClick={() => setView('startups')}>Startups</button>
-        <button onClick={() => setView('technologies')}>Technologies</button>
-      </nav>
-      {view === 'startups' ? <CrudPanel entity="startups" /> : <CrudPanel entity="technologies" />}
-      <footer style={{ marginTop: 32, fontSize: 12, color: '#888' }}>
-        <p>Conectado a: <code>{API_URL}</code></p>
-      </footer>
+    <div className="app-root">
+      <header className="navbar">
+        <h1 className="navbar-title">Panel CRUD Startups & Technologies</h1>
+        <nav className="navbar-nav">
+          <button
+            className={view === 'startups' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => setView('startups')}
+          >
+            Startups
+          </button>
+          <button
+            className={view === 'technologies' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => setView('technologies')}
+          >
+            Technologies
+          </button>
+        </nav>
+      </header>
+      <div className="main-content">
+        {view === 'startups' ? <CrudPanel entity="startups" /> : <CrudPanel entity="technologies" />}
+        <footer className="footer">
+          <p>Conectado a: <code>{API_URL}</code></p>
+        </footer>
+      </div>
     </div>
   );
 }
 
 function CrudPanel({ entity }) {
+  // Estado para errores de validación por campo
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // Reglas de validación por campo
+  const validators = {
+    name: v => v.trim() ? '' : 'El nombre es obligatorio',
+    foundedAt: v => v ? '' : 'La fecha es obligatoria',
+    location: v => v.trim() ? '' : 'La ubicación es obligatoria',
+    category: v => v.trim() ? '' : 'La categoría es obligatoria',
+    fundingAmount: v => !isNaN(Number(v)) && Number(v) >= 0 ? '' : 'Debe ser un número positivo',
+    id: v => v.trim() ? '' : 'El ID es obligatorio',
+    sector: v => v.trim() ? '' : 'El sector es obligatorio',
+    description: v => v.trim() ? '' : 'La descripción es obligatoria',
+    level: v => v.trim() ? '' : 'El nivel es obligatorio',
+  };
+
+  // Validar un campo específico
+  const validateField = (name, value) => {
+    if (validators[name]) {
+      return validators[name](value || '');
+    }
+    return '';
+  };
+
+  // Validar todo el formulario
+  const validateForm = formObj => {
+    const errors = {};
+    Object.keys(formObj).forEach(key => {
+      const err = validateField(key, formObj[key]);
+      if (err) errors[key] = err;
+    });
+    return errors;
+  };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({});
   const [editId, setEditId] = useState(null);
@@ -41,12 +103,43 @@ function CrudPanel({ entity }) {
     setLoading(false);
   };
 
+  // Campos por entidad
+  const fields = entity === 'startups'
+    ? [
+        { name: 'name', label: 'Nombre' },
+        { name: 'foundedAt', label: 'Fundada en' },
+        { name: 'location', label: 'Ubicación' },
+        { name: 'category', label: 'Categoría' },
+        { name: 'fundingAmount', label: 'Financiamiento' },
+      ]
+    : [
+        { name: 'id', label: 'ID' },
+        { name: 'name', label: 'Nombre' },
+        { name: 'sector', label: 'Sector' },
+        { name: 'description', label: 'Descripción' },
+        { name: 'level', label: 'Nivel' },
+      ];
+
+  React.useEffect(() => {
+    fetchItems();
+    setForm({});
+    setEditId(null);
+    setError('');
+  }, [entity]);
+
   const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+    // Validación dinámica
+    setFieldErrors(prev => ({ ...prev, [name]: validateField(name, value) }));
   };
 
   const handleSubmit = async e => {
     e.preventDefault();
+    // Validar todo el formulario antes de enviar
+    const errors = validateForm(form);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     setLoading(true);
     setError('');
     try {
@@ -54,10 +147,13 @@ function CrudPanel({ entity }) {
       const url = editId
         ? `${API_URL}/${entity}/update/${editId}`
         : `${API_URL}/${entity}/create`;
-      // Convierte fundingAmount a número si es startups
       let body = { ...form };
-      if (entity === 'startups' && body.fundingAmount !== undefined) {
-        body.fundingAmount = Number(body.fundingAmount);
+      if (entity === 'startups') {
+        if (body.fundingAmount !== undefined) {
+          body.fundingAmount = Number(body.fundingAmount);
+        }
+        // Enviar fecha como 'YYYY-MM-DD' (sin hora ni zona horaria)
+        // No modificar body.foundedAt, ya que el input date ya da ese formato
       }
       const res = await fetch(url, {
         method,
@@ -93,46 +189,54 @@ function CrudPanel({ entity }) {
     setLoading(false);
   };
 
-  // Campos por entidad
-  const fields = entity === 'startups'
-    ? [
-        { name: 'name', label: 'Nombre' },
-        { name: 'foundedAt', label: 'Fundada en' },
-        { name: 'location', label: 'Ubicación' },
-        { name: 'category', label: 'Categoría' },
-        { name: 'fundingAmount', label: 'Financiamiento' },
-      ]
-    : [
-        { name: 'id', label: 'ID' },
-        { name: 'name', label: 'Nombre' },
-        { name: 'sector', label: 'Sector' },
-        { name: 'description', label: 'Descripción' },
-        { name: 'level', label: 'Nivel' },
-      ];
-
-  // Cargar datos al montar
-  React.useEffect(() => {
-    fetchItems();
-    setForm({});
-    setEditId(null);
-    setError('');
-  }, [entity]);
-
   return (
-    <div>
-      <h2>{entity === 'startups' ? 'Startups' : 'Technologies'}</h2>
-      <form onSubmit={handleSubmit} style={{ marginBottom: 16 }}>
-        {fields.map(f => (
-          <input
-            key={f.name}
-            name={f.name}
-            placeholder={f.label}
-            value={form[f.name] || ''}
-            onChange={handleChange}
-            required
-            style={{ marginRight: 8 }}
-          />
-        ))}
+    <div style={{ textAlign: 'left', margin: '0 auto', maxWidth: 800 }}>
+      <h2 className="crud-title">{entity === 'startups' ? 'Startups' : 'Technologies'}</h2>
+      <form onSubmit={handleSubmit} className="crud-form">
+        {fields.map(f => {
+          // Ejemplos por campo
+          const examples = {
+            name: 'Ej: Acme Corp',
+            foundedAt: 'Ej: 2020-01-01',
+            location: 'Ej: Ciudad de México',
+            category: 'Ej: Fintech',
+            fundingAmount: 'Ej: 1000000',
+            id: 'Ej: T001',
+            sector: 'Ej: Software',
+            description: 'Ej: Plataforma de IA',
+            level: 'Ej: Avanzado',
+          };
+          return (
+            <div key={f.name} style={{ width: '100%' }}>
+              <label style={{ fontWeight: 500, marginBottom: 2 }} className="crud-title">
+                {entity === 'startups' && f.name === 'foundedAt' ? 'Fecha de fundación' : f.label}
+              </label>
+              {entity === 'startups' && f.name === 'foundedAt' ? (
+                <input
+                  type="date"
+                  name="foundedAt"
+                  className="crud-input"
+                  value={form.foundedAt ? form.foundedAt : ''}
+                  onChange={handleChange}
+                  required
+                  placeholder={examples.foundedAt}
+                />
+              ) : (
+                <input
+                  name={f.name}
+                  className="crud-input"
+                  placeholder={examples[f.name] || f.label}
+                  value={form[f.name] || ''}
+                  onChange={handleChange}
+                  required
+                />
+              )}
+              {fieldErrors[f.name] && (
+                <div className="crud-error">{fieldErrors[f.name]}</div>
+              )}
+            </div>
+          );
+        })}
         <button type="submit" disabled={loading}>
           {editId ? 'Actualizar' : 'Crear'}
         </button>
@@ -142,15 +246,16 @@ function CrudPanel({ entity }) {
           </button>
         )}
       </form>
-      {error && <div style={{ color: 'red' }}>{error}</div>}
-      <button onClick={fetchItems} disabled={loading} style={{ marginBottom: 8 }}>Refrescar</button>
+      {error && <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>}
+      <div style={{ marginBottom: 8 }}>
+        <button onClick={fetchItems} disabled={loading}>Refrescar</button>
+      </div>
       {loading ? <p>Cargando...</p> : (
-        <table border="1" cellPadding="6" style={{ width: '100%', background: '#fff' }}>
+        <table border="1" cellPadding="6" style={{ width: '100%', background: '#fff', margin: '0 auto', textAlign: 'center' }}>
           <thead>
             <tr>
-              {/* Mostrar primero los campos definidos en fields, luego los extras */}
-              {fields.map(f => <th key={f.name}>{f.label}</th>)}
-              <th>Acciones</th>
+              {fields.map(f => <th key={f.name} style={{ textAlign: 'center' }}>{f.label}</th>)}
+              <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -159,7 +264,6 @@ function CrudPanel({ entity }) {
             ) : (
               items.map(item => (
                 <tr key={item.id || item._id || Math.random()}>
-                  {/* Mostrar primero los campos definidos en fields, luego los extras */}
                   {fields.map(f => {
                     let value =
                       item[f.name] ??
@@ -167,13 +271,16 @@ function CrudPanel({ entity }) {
                       item[f.name.replace(/([A-Z])/g, '_$1').toLowerCase()] ??
                       item[f.name === 'id' ? '_id' : ''] ??
                       '';
-                    // Si es la columna 'level', buscar también adoptionLevel y adoption_level
                     if (f.name === 'level' && !value) {
                       value = item['adoptionLevel'] ?? item['adoption_level'] ?? item['adoptionlevel'] ?? '';
                     }
-                    return <td key={f.name}>{value}</td>;
+                    // Mostrar fecha legible para startups en foundedAt
+                    if (entity === 'startups' && f.name === 'foundedAt') {
+                      value = formatDateES(value);
+                    }
+                    return <td key={f.name} style={{ textAlign: 'center' }}>{value}</td>;
                   })}
-                  <td>
+                  <td style={{ textAlign: 'center' }}>
                     <button onClick={() => handleEdit(item)}>Editar</button>
                     <button onClick={() => handleDelete(item.id)} style={{ color: 'red' }}>Eliminar</button>
                   </td>
