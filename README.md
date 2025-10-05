@@ -158,7 +158,3 @@ DELETE /v1/api/startups/delete/1
 ```
 Respuesta: Código 204 sin contenido.
 
-## Pruebas manuales
-- Crear, listar, leer, actualizar y eliminar startups y technologies.
-- Pruebas con datos válidos e inválidos.
-- Capturas de pantalla del frontend y de Postman.
