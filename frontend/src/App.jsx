@@ -42,9 +42,6 @@ function App() {
       </header>
       <div className="main-content">
         {view === 'startups' ? <CrudPanel entity="startups" /> : <CrudPanel entity="technologies" />}
-        <footer className="footer">
-          <p>Conectado a: <code>{API_URL}</code></p>
-        </footer>
       </div>
     </div>
   );
@@ -56,15 +53,56 @@ function CrudPanel({ entity }) {
 
   // Reglas de validación por campo
   const validators = {
-    name: v => v.trim() ? '' : 'El nombre es obligatorio',
-    foundedAt: v => v ? '' : 'La fecha es obligatoria',
-    location: v => v.trim() ? '' : 'La ubicación es obligatoria',
-    category: v => v.trim() ? '' : 'La categoría es obligatoria',
-    fundingAmount: v => !isNaN(Number(v)) && Number(v) >= 0 ? '' : 'Debe ser un número positivo',
+    name: v => {
+      if (!v.trim()) return 'El nombre es obligatorio';
+      if (entity === 'technologies') {
+        if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(v)) return 'Debe empezar con una letra';
+        if (v.trim().length < 3) return 'Mínimo 3 letras';
+      } else {
+        if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ ]+$/.test(v)) return 'Solo letras';
+        if (v.trim().length < 3) return 'Mínimo 3 letras';
+      }
+      return '';
+    },
+    foundedAt: v => {
+      if (!v) return 'La fecha es obligatoria';
+      const year = Number(v.split('-')[0]);
+      if (isNaN(year) || year < 1800) return 'Año mínimo: 1800';
+      return '';
+    },
+    location: v => {
+      if (!v.trim()) return 'La ubicación es obligatoria';
+      // Permitir letras, números, espacios, comas, acentos y hashtags, y debe empezar con letra
+      if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ][A-Za-zÁÉÍÓÚáéíóúÑñ0-9 ,#áéíóúÁÉÍÓÚñÑ]*$/.test(v)) return 'Solo letras, números, espacios, comas y #, debe empezar con letra';
+      if (v.trim().length < 5) return 'Mínimo 5 caracteres';
+      return '';
+    },
+    category: v => {
+      if (!v.trim()) return 'La categoría es obligatoria';
+      if (v.trim().length < 4) return 'Mínimo 4 letras';
+      return '';
+    },
+    fundingAmount: v => {
+      if (!v.trim()) return 'El financiamiento es obligatorio';
+      if (!/^[0-9]+$/.test(v)) return 'Solo números';
+      return '';
+    },
     id: v => v.trim() ? '' : 'El ID es obligatorio',
-    sector: v => v.trim() ? '' : 'El sector es obligatorio',
-    description: v => v.trim() ? '' : 'La descripción es obligatoria',
-    level: v => v.trim() ? '' : 'El nivel es obligatorio',
+    sector: v => {
+      if (!v.trim()) return 'El sector es obligatorio';
+      if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ ]+$/.test(v)) return 'Solo letras';
+      return '';
+    },
+    description: v => {
+      if (!v.trim()) return 'La descripción es obligatoria';
+      if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(v)) return 'Debe empezar con una letra';
+      return '';
+    },
+    level: v => {
+      if (!v.trim()) return 'El nivel es obligatorio';
+      if (!['Avanzado', 'Medio', 'Bajo'].includes(v)) return 'Nivel inválido';
+      return '';
+    },
   };
 
   // Validar un campo específico
@@ -113,7 +151,7 @@ function CrudPanel({ entity }) {
         { name: 'fundingAmount', label: 'Financiamiento' },
       ]
     : [
-        { name: 'id', label: 'ID' },
+        { name: 'id', label: 'ID', hideInForm: true },
         { name: 'name', label: 'Nombre' },
         { name: 'sector', label: 'Sector' },
         { name: 'description', label: 'Descripción' },
@@ -154,6 +192,12 @@ function CrudPanel({ entity }) {
         }
         // Enviar fecha como 'YYYY-MM-DD' (sin hora ni zona horaria)
         // No modificar body.foundedAt, ya que el input date ya da ese formato
+      } else if (entity === 'technologies') {
+        // El backend espera adoptionLevel, no level
+        if (body.level) {
+          body.adoptionLevel = body.level;
+          delete body.level;
+        }
       }
       const res = await fetch(url, {
         method,
@@ -171,7 +215,33 @@ function CrudPanel({ entity }) {
   };
 
   const handleEdit = item => {
-    setForm(item);
+    const newForm = { ...item };
+    if (entity === 'startups') {
+      // Buscar foundedAt en variantes
+      let foundedAt = item.foundedAt || item.founded_at || item.FoundedAt;
+      if (foundedAt) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(foundedAt)) {
+          newForm.foundedAt = foundedAt;
+        } else {
+          const d = new Date(foundedAt);
+          if (!isNaN(d)) {
+            newForm.foundedAt = d.toISOString().slice(0, 10);
+          } else {
+            newForm.foundedAt = '';
+          }
+        }
+      } else {
+        newForm.foundedAt = '';
+      }
+      // Buscar fundingAmount en variantes
+      let funding = item.fundingAmount ?? item.funding_amount ?? item.FundingAmount;
+      if (funding !== undefined && funding !== null) {
+        newForm.fundingAmount = String(funding);
+      } else {
+        newForm.fundingAmount = '';
+      }
+    }
+    setForm(newForm);
     setEditId(item.id);
   };
 
@@ -193,7 +263,7 @@ function CrudPanel({ entity }) {
     <div style={{ textAlign: 'left', margin: '0 auto', maxWidth: 800 }}>
       <h2 className="crud-title">{entity === 'startups' ? 'Startups' : 'Technologies'}</h2>
       <form onSubmit={handleSubmit} className="crud-form">
-        {fields.map(f => {
+        {fields.filter(f => !(entity === 'technologies' && f.hideInForm)).map(f => {
           // Ejemplos por campo
           const examples = {
             name: 'Ej: Acme Corp',
@@ -221,6 +291,19 @@ function CrudPanel({ entity }) {
                   required
                   placeholder={examples.foundedAt}
                 />
+              ) : entity === 'technologies' && f.name === 'level' ? (
+                <select
+                  name="level"
+                  className="crud-input"
+                  value={form.level || ''}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="" disabled>Selecciona nivel</option>
+                  <option value="Avanzado">Avanzado</option>
+                  <option value="Medio">Medio</option>
+                  <option value="Bajo">Bajo</option>
+                </select>
               ) : (
                 <input
                   name={f.name}
@@ -247,9 +330,7 @@ function CrudPanel({ entity }) {
         )}
       </form>
       {error && <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>}
-      <div style={{ marginBottom: 8 }}>
-        <button onClick={fetchItems} disabled={loading}>Refrescar</button>
-      </div>
+  
       {loading ? <p>Cargando...</p> : (
         <table border="1" cellPadding="6" style={{ width: '100%', background: '#fff', margin: '0 auto', textAlign: 'center' }}>
           <thead>
@@ -290,6 +371,9 @@ function CrudPanel({ entity }) {
           </tbody>
         </table>
       )}
+      <div style={{ marginBottom: 8 }}>
+        <button onClick={fetchItems} disabled={loading}>Refrescar</button>
+      </div>
     </div>
   );
 }

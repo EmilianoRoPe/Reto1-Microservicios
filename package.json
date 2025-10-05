@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "dev:all": "start cmd /c \"docker-compose up --build\" && cd frontend && npm run dev",
+    "stop:all": "docker-compose down"
+  }
+}
